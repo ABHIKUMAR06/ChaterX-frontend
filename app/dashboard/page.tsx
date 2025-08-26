@@ -229,7 +229,6 @@ export default function DashboardPage() {
       });
 
       socketRef.current.on("newNotification", (notification: any) => {
-        console.log("Received notification:", notification);
 
         const formattedNotification: Notification = {
           id: notification.id || `notification-${Date.now()}`,
@@ -240,8 +239,8 @@ export default function DashboardPage() {
           timestamp: notification.timestamp || new Date().toISOString(),
           read: false
         };
-
         setNotifications(prev => [formattedNotification, ...prev.slice(0, 49)]);
+      
       });
 
       socketRef.current.on("messageStatusUpdated", ({ messageId, status, chatId, updatedAt }: any) => {

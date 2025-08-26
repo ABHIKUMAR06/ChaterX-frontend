@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { loginUser } from "@/lib/userApi";
-import Button from "../components/Button/button";
+import Button from "@/components/Button/button";
 
 interface LoginForm {
   email: string;
