@@ -1,11 +1,10 @@
 "use client";
-
 import React, { useEffect, useState } from "react";
 import { ChatListProps, Chat } from "@/type/type";
 import { Socket } from "socket.io-client";
 
 interface Props extends ChatListProps {
-  socket: Socket;
+  socket: Socket | null;
 }
 
 export function ChatList({ chats: initialChats, onSelect, selectedChat, socket }: Props) {

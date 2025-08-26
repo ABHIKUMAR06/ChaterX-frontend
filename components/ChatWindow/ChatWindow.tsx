@@ -1,46 +1,32 @@
+import { useSocket } from "@/hooks/useSocket";
 import { fetchMessage } from "@/lib/messageAPI";
 import { ChatWindowProps, Messages } from "@/type/type";
 import { useState, useEffect, useRef } from "react";
 import { FaReply } from "react-icons/fa";
-import { Socket } from "socket.io-client";
 
-interface ExtendedChatWindowProps extends ChatWindowProps {
-  socket: Socket | null;
-}
-
-export default function ChatWindow({ chatId, name, onMessageSent, socket }: ExtendedChatWindowProps) {
+export default function ChatWindow({ chatId, name, onMessageSent }: ChatWindowProps) {
   const [messages, setMessages] = useState<Messages[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const [loading, setLoading] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [hasJoinedChat, setHasJoinedChat] = useState(false);
   const [replyTo, setReplyTo] = useState<Messages | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  const { socket, joinChat, leaveChat, sendMessage, markMessagesAsRead } = useSocket(chatId);
+
   useEffect(() => {
     const userId = localStorage.getItem("uid");
     setCurrentUserId(userId);
   }, []);
 
   useEffect(() => {
-    if (!socket || !chatId || !currentUserId || !socket.connected) return;
+    if (!socket || !chatId || !currentUserId) return;
 
-    setHasJoinedChat(false);
-
-    socket.emit("joinChat", chatId, (response: any) => {
-      if (response?.success) {
-        setHasJoinedChat(true);
-      } else {
-        console.error("Failed to join chat:", response?.error);
-      }
-    });
+    joinChat(chatId)
 
     return () => {
-      if (socket && chatId) {
-        socket.emit("leaveChat", chatId);
-        setHasJoinedChat(false);
-      }
+      leaveChat(chatId);
     };
   }, [socket, chatId, currentUserId]);
 
@@ -48,9 +34,10 @@ export default function ChatWindow({ chatId, name, onMessageSent, socket }: Exte
     if (!socket || !chatId || !currentUserId) return;
 
     const handleNewMessage = (message: Messages) => {
-      const messageChatId = typeof message.chat === "object" && message.chat !== null
-        ? (message.chat as any)._id
-        : message.chat;
+      const messageChatId =
+        typeof message.chat === "object" && message.chat !== null
+          ? (message.chat as any)._id
+          : message.chat;
 
       if (messageChatId !== chatId) return;
 
@@ -62,8 +49,14 @@ export default function ChatWindow({ chatId, name, onMessageSent, socket }: Exte
       });
     };
 
-    const handleStatusUpdate = ({ messageId, status, chatId: updateChatId }: {
-      messageId: string; status: string; chatId?: string
+    const handleStatusUpdate = ({
+      messageId,
+      status,
+      chatId: updateChatId,
+    }: {
+      messageId: string;
+      status: string;
+      chatId?: string;
     }) => {
       if (updateChatId && updateChatId !== chatId) return;
 
@@ -74,26 +67,12 @@ export default function ChatWindow({ chatId, name, onMessageSent, socket }: Exte
       );
     };
 
-    const handleUserTyping = ({ userId, userName, isTyping }: {
-      userId: string; userName: string; isTyping: boolean
-    }) => {
-      if (userId === currentUserId) return;
-
-    
-    };
-
-    socket.off("newMessage", handleNewMessage);
-    socket.off("messageStatusUpdated", handleStatusUpdate);
-    socket.off("userTyping", handleUserTyping);
-
     socket.on("newMessage", handleNewMessage);
     socket.on("messageStatusUpdated", handleStatusUpdate);
-    socket.on("userTyping", handleUserTyping);
 
     return () => {
       socket.off("newMessage", handleNewMessage);
       socket.off("messageStatusUpdated", handleStatusUpdate);
-      socket.off("userTyping", handleUserTyping);
     };
   }, [socket, chatId, currentUserId]);
 
@@ -102,10 +81,9 @@ export default function ChatWindow({ chatId, name, onMessageSent, socket }: Exte
 
     const fetchMessages = async () => {
       try {
-        setLoading(true);
         const data = await fetchMessage(chatId);
 
-        if (data.messages && Array.isArray(data.messages)) {
+        if (Array.isArray(data.messages)) {
           const sorted = data.messages.sort(
             (a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
           );
@@ -116,8 +94,6 @@ export default function ChatWindow({ chatId, name, onMessageSent, socket }: Exte
       } catch (err) {
         console.error("Error fetching messages:", err);
         setMessages([]);
-      } finally {
-        setLoading(false);
       }
     };
 
@@ -125,76 +101,53 @@ export default function ChatWindow({ chatId, name, onMessageSent, socket }: Exte
   }, [chatId, currentUserId]);
 
   useEffect(() => {
-    if (!socket || !chatId || !currentUserId || !hasJoinedChat) return;
-
     const container = containerRef.current;
     if (!container) return;
 
-    const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+    const isNearBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+
     if (!isNearBottom) return;
 
-    const unreadMessages = messages.filter((message) =>
-      message.sender?._id !== currentUserId &&
-      message.status?.name !== "read"
+    const unreadMessages = messages.filter(
+      (message) =>
+        message.sender?._id !== currentUserId && message.status?.name !== "read"
     );
 
-    unreadMessages.forEach((message) => {
-      socket.emit("messageStatusUpdate", {
-        messageId: message._id,
-        chatId,
-        statusName: "read",
-      });
-    });
-  }, [messages, socket, chatId, currentUserId, hasJoinedChat]);
+    if (unreadMessages.length > 0) {
+      markMessagesAsRead(chatId, unreadMessages);
+    }
+  }, [messages, markMessagesAsRead, chatId, currentUserId]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, 100);
-
     return () => clearTimeout(timer);
   }, [messages]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setNewMessage(e.target.value);
-
-    if (!socket || !chatId || !currentUserId || !hasJoinedChat) return;
-
-    socket.emit("userTyping", {
-      userId: currentUserId,
-      userName: "You",
-      isTyping: true,
-      chatId,
-    });
-
   };
 
   const handleSendMessage = () => {
-    if (!newMessage.trim() || !socket || !chatId || !currentUserId || !hasJoinedChat) return;
+    if (!newMessage.trim()) return;
 
-    const messagePayload: any = {
-      chat: chatId,
-      content: newMessage.trim(),
-    };
-
-    if (replyTo) {
-      messagePayload.messageData = {
-        _id: replyTo._id,
-        content: replyTo.content,
-      };
-    }
-
-    socket.emit("newMessage", messagePayload, (response: any) => {
-      if (response?.success) {
-        if (onMessageSent) {
-          onMessageSent(chatId, newMessage.trim());
+    sendMessage(
+      chatId,
+      newMessage.trim(),
+      replyTo
+        ? {
+          _id: replyTo._id,
+          content: replyTo.content,
         }
-        setNewMessage("");
-        setReplyTo(null);
-      } else {
-        console.error("Failed to send message:", response?.error);
-      }
-    });
+        : undefined
+    );
+
+    if (onMessageSent) onMessageSent(chatId, newMessage.trim());
+
+    setNewMessage("");
+    setReplyTo(null);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -213,22 +166,25 @@ export default function ChatWindow({ chatId, name, onMessageSent, socket }: Exte
   }
 
   return (
-    <div ref={containerRef} className="flex flex-col h-full w-full max-w-full bg-orange-50">
+    <div
+      ref={containerRef}
+      className="flex flex-col h-full w-full max-w-full bg-orange-50"
+    >
       <div className="p-3 bg-orange-500 text-white shadow flex items-center justify-between">
         <h2 className="text-lg font-semibold">{name}</h2>
       </div>
 
       <div className="flex-grow p-4 overflow-y-auto space-y-3">
-        {loading && <div className="text-center text-gray-500">Loading messages...</div>}
-
-        {messages.length === 0 && !loading && (
-          <div className="text-center text-gray-400">No messages yet. Start the conversation!</div>
+        {messages.length === 0 && (
+          <div className="text-center text-gray-400">
+            No messages yet. Start the conversation!
+          </div>
         )}
 
         {messages.map((msg) => (
           <div
             key={msg._id}
-            className={`flex  ${msg.sender?._id === currentUserId ? "justify-end" : "justify-start"}`}
+            className={`flex ${msg.sender?._id === currentUserId ? "justify-end" : "justify-start"}`}
           >
             <div
               className={`relative max-w-xs px-4 py-2 rounded-2xl text-sm shadow-sm ${msg.sender?._id === currentUserId
@@ -238,10 +194,10 @@ export default function ChatWindow({ chatId, name, onMessageSent, socket }: Exte
             >
               <div className="absolute right-1 top-1">
                 <button
-                  className={`text-xs  ${msg.sender?._id === currentUserId
-                    ?"text-zinc-600"
-                    :"text-zinc-500"
-                  }`}
+                  className={`text-xs ${msg.sender?._id === currentUserId
+                    ? "text-zinc-600"
+                    : "text-zinc-500"
+                    }`}
                   onClick={(e) => {
                     e.stopPropagation();
                     setReplyTo(msg);
@@ -254,7 +210,11 @@ export default function ChatWindow({ chatId, name, onMessageSent, socket }: Exte
               {msg.isReply && msg.parentComment && (
                 <div className="border-l-2 border-orange-300 pl-2 mb-1 text-xs italic">
                   <div className="text-orange-600 font-semibold">
-                    Replying to {msg.parentComment?.sender?._id === currentUserId ? "You" : msg.parentComment?.sender?.name}:
+                    Replying to{" "}
+                    {msg.parentComment?.sender?._id === currentUserId
+                      ? "You"
+                      : msg.parentComment?.sender?.name}
+                    :
                   </div>
                   <div className="truncate text-gray-700">
                     {msg.parentComment.content || "Message unavailable"}
@@ -272,11 +232,16 @@ export default function ChatWindow({ chatId, name, onMessageSent, socket }: Exte
 
               <div className="text-[10px] mt-1 flex justify-between items-center opacity-75">
                 <span>
-                  {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {new Date(msg.createdAt).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </span>
                 {msg.sender?._id === currentUserId && (
                   <span
-                    className={`${msg.status?.name === "read" ? "text-green-300" : "text-white"
+                    className={`${msg.status?.name === "read"
+                      ? "text-green-300"
+                      : "text-white"
                       }`}
                   >
                     {msg.status?.name === "sent" && "✓"}
@@ -288,7 +253,6 @@ export default function ChatWindow({ chatId, name, onMessageSent, socket }: Exte
             </div>
           </div>
         ))}
-
         <div ref={messagesEndRef} />
       </div>
 
@@ -298,7 +262,9 @@ export default function ChatWindow({ chatId, name, onMessageSent, socket }: Exte
             <span className="font-semibold text-orange-600">
               Replying to {replyTo.sender?.name || "Unknown"}:
             </span>
-            <p className="truncate text-gray-700 max-w-[200px]">{replyTo.content}</p>
+            <p className="truncate text-gray-700 max-w-[200px]">
+              {replyTo.content}
+            </p>
           </div>
           <button
             onClick={() => setReplyTo(null)}
@@ -317,12 +283,11 @@ export default function ChatWindow({ chatId, name, onMessageSent, socket }: Exte
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
           placeholder="Type a message..."
-          disabled={loading || !hasJoinedChat}
         />
         <button
           className="bg-orange-500 text-white px-5 py-2 rounded-full shadow-md hover:bg-orange-600 active:scale-95 transition disabled:opacity-50"
           onClick={handleSendMessage}
-          disabled={loading || newMessage.trim() === "" || !hasJoinedChat}
+          disabled={!newMessage.trim()}
         >
           Send
         </button>
