@@ -11,7 +11,7 @@ import { MdOutlineGroupAdd, MdNotifications, MdNotificationsActive } from "react
 import { GroupModel } from "@/components/Model/GroupModel";
 import { io, Socket } from "socket.io-client";
 import type { DefaultEventsMap } from "@socket.io/component-emitter";
-import { withAuth } from "@/components/Auth/Auth";
+import { Auth } from "@/components/Auth/Auth";
 
 function DashboardPage() {
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
@@ -572,4 +572,4 @@ function DashboardPage() {
     </div>
   );
 }
-export default withAuth(DashboardPage)
+export default Auth(DashboardPage)

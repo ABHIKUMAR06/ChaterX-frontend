@@ -1,7 +1,7 @@
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
-export function withAuth(WrappedComponent: React.FC) {
+export function Auth(WrappedComponent: React.FC) {
   return function ProtectedComponent(props: any) {
     const router = useRouter();
 
