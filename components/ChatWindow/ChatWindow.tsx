@@ -231,14 +231,17 @@ export default function ChatWindow({ chatId, name, onMessageSent, socket }: Exte
             className={`flex  ${msg.sender?._id === currentUserId ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`relative max-w-xs px-3 py-2 rounded-2xl text-sm shadow-sm ${msg.sender?._id === currentUserId
+              className={`relative max-w-xs px-4 py-2 rounded-2xl text-sm shadow-sm ${msg.sender?._id === currentUserId
                 ? "bg-orange-500 text-white rounded-br-none"
                 : "bg-white text-gray-900 rounded-bl-none"
                 }`}
             >
               <div className="absolute right-1 top-1">
                 <button
-                  className="text-xs text-gray-400 hover:text-gray-600"
+                  className={`text-xs  ${msg.sender?._id === currentUserId
+                    ?"text-zinc-600"
+                    :"text-zinc-500"
+                  }`}
                   onClick={(e) => {
                     e.stopPropagation();
                     setReplyTo(msg);
