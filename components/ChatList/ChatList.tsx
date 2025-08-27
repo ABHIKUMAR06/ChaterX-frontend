@@ -17,6 +17,30 @@ export function ChatList({ chats: initialChats, onSelect, selectedChat, socket }
   useEffect(() => {
     if (!socket) return;
 
+    const handleNewMessage = (message: any) => {
+      const chatId = typeof message.chat === "object" && message.chat !== null
+        ? message.chat._id
+        : message.chat;
+
+      setChats((prev) => {
+        const existingChatIndex = prev.findIndex((chat) => chat.id === chatId);
+        
+        if (existingChatIndex === -1) {
+          return prev;
+        }
+
+        const updatedChats = [...prev];
+        const [chatToUpdate] = updatedChats.splice(existingChatIndex, 1);
+        
+        const updatedChat: Chat = {
+          ...chatToUpdate,
+          lastMessage: message.content || "",
+        };
+
+        return [updatedChat, ...updatedChats];
+      });
+    };
+
     const handleNewChat = (chatData: any) => {
       const formattedChat: Chat = {
         id: chatData._id,
@@ -31,20 +55,12 @@ export function ChatList({ chats: initialChats, onSelect, selectedChat, socket }
       });
     };
 
-    const handleLastMessageUpdate = ({ chatId, lastMessage }: any) => {
-      setChats((prev) =>
-        prev.map((chat) =>
-          chat.id === chatId ? { ...chat, lastMessage } : chat
-        )
-      );
-    };
-
+    socket.on("newMessage", handleNewMessage);
     socket.on("newChat", handleNewChat);
-    socket.on("lastMessageUpdated", handleLastMessageUpdate);
 
     return () => {
+      socket.off("newMessage", handleNewMessage);
       socket.off("newChat", handleNewChat);
-      socket.off("lastMessageUpdated", handleLastMessageUpdate);
     };
   }, [socket]);
 

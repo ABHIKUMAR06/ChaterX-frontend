@@ -1,7 +1,5 @@
 import { ButtonProps } from "@/type/type";
 import React from "react";
-
-
 export default function Button({
   value,
   className = "",

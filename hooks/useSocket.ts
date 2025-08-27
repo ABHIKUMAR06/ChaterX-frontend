@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { socketService, SocketCallbacks } from "@/lib/socketService";
 import { Chat, Notification } from "@/type/type";
 
@@ -21,7 +21,6 @@ interface UseSocketReturn {
   joinChat: (chatId: string) => void;
   leaveChat: (chatId: string) => void;
   markMessagesAsRead: (chatId: string, messages: any[]) => void;
-
 }
 
 export const useSocket = (selectedChat: string | null): UseSocketReturn => {
@@ -29,6 +28,14 @@ export const useSocket = (selectedChat: string | null): UseSocketReturn => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+
+  // Use ref to track the latest selectedChat value
+  const selectedChatRef = useRef<string | null>(selectedChat);
+
+  // Keep the ref updated
+  useEffect(() => {
+    selectedChatRef.current = selectedChat;
+  }, [selectedChat]);
 
   useEffect(() => {
     const savedNotifications = localStorage.getItem('notifications');
@@ -79,7 +86,7 @@ export const useSocket = (selectedChat: string | null): UseSocketReturn => {
 
     const currentUserId = localStorage.getItem("uid");
 
-    if (message.senderId !== currentUserId && selectedChat !== chatId) {
+    if (message.senderId !== currentUserId && selectedChatRef.current !== chatId) {
       const senderName = message.senderName || message.sender?.name || "Someone";
 
       const newNotification: Notification = {
@@ -118,21 +125,23 @@ export const useSocket = (selectedChat: string | null): UseSocketReturn => {
           id: chatId,
           name: chatName,
           lastMessage: message.content || "",
+          
         };
 
         return [newChat, ...prevChats];
       }
 
+      const updatedChats = [...prevChats];
+      const [chatToUpdate] = updatedChats.splice(existingChatIndex, 1);
+
       const updatedChat: Chat = {
-        ...prevChats[existingChatIndex],
+        ...chatToUpdate,
         lastMessage: message.content || "",
       };
 
-      const newChats = [...prevChats];
-      newChats.splice(existingChatIndex, 1);
-      return [updatedChat, ...newChats];
+      return [updatedChat, ...updatedChats];
     });
-  }, [selectedChat]);
+  }, []); 
 
   const handleNewNotification = useCallback((notification: any) => {
     const formattedNotification: Notification = {
@@ -198,6 +207,7 @@ export const useSocket = (selectedChat: string | null): UseSocketReturn => {
       socketService.disconnect();
     };
   }, []);
+
   useEffect(() => {
     const handleCustomEvent = (data: any) => {
       console.log("Custom event data:", data);
@@ -217,7 +227,6 @@ export const useSocket = (selectedChat: string | null): UseSocketReturn => {
   }, [handleNewChat, handleNewMessage, handleNewNotification, handleMessageStatusUpdated, handleError, handleConnected, handleDisconnected, handleChatsLoaded]);
 
   const handleChatSelect = useCallback((chatId: string | null, prevChatId?: string | null) => {
-
     if (prevChatId && prevChatId !== chatId) {
       socketService.leaveChat(prevChatId);
     }
@@ -245,20 +254,23 @@ export const useSocket = (selectedChat: string | null): UseSocketReturn => {
         return prevChats;
       }
 
+      // Move the updated chat to the top
+      const updatedChats = [...prevChats];
+      const [chatToUpdate] = updatedChats.splice(chatIndex, 1);
+
       const updatedChat: Chat = {
-        ...prevChats[chatIndex],
+        ...chatToUpdate,
         lastMessage: message,
       };
 
-      const newChats = [...prevChats];
-      newChats.splice(chatIndex, 1);
-      return [updatedChat, ...newChats];
+      return [updatedChat, ...updatedChats];
     });
   }, []);
 
   const refreshChats = useCallback(() => {
     socketService.fetchUserChats();
   }, []);
+
   const sendMessage = useCallback(
     (chatId: string, message: string, replyTo?: { _id: string; content: string }) => {
       socketService.sendMessage(chatId, message, replyTo);
@@ -266,6 +278,7 @@ export const useSocket = (selectedChat: string | null): UseSocketReturn => {
     },
     [handleLocalMessageSent]
   );
+
   const joinChat = useCallback((chatId: string) => {
     socketService.joinChat(chatId);
   }, []);
@@ -273,10 +286,10 @@ export const useSocket = (selectedChat: string | null): UseSocketReturn => {
   const leaveChat = useCallback((chatId: string) => {
     socketService.leaveChat(chatId);
   }, []);
+
   const markMessagesAsRead = useCallback((chatId: string, messages: any[]) => {
     socketService.markMessagesAsRead(chatId, messages);
   }, []);
-
 
   const handleMarkAsRead = useCallback((id: string) => {
     setNotifications(prev =>
