@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, useCallback} from "react";
+import { useState, useCallback } from "react";
 import { ChatList } from "@/components/ChatList/ChatList";
 import ChatWindow from "@/components/ChatWindow/ChatWindow";
 import UserSearch from "@/components/Search/Search";
 import NotificationList from "@/components/Notification/NotificationList";
-import { createGroupChatSocket } from "@/lib/chatApi";
-import { Chat } from "@/type/type";
+import { Chat, User } from "@/type/type";
 import { MdOutlineGroupAdd, MdNotifications, MdNotificationsActive } from "react-icons/md";
 import { GroupModel } from "@/components/Model/GroupModel";
 import { Auth } from "@/components/Auth/Auth";
@@ -22,8 +21,9 @@ function DashboardPage() {
   const {
     socket,
     chats,
+    createGroupChat,
+    createOneOnOneChat,
     notifications,
-    refreshChats,
     handleChatSelect,
     handleLocalMessageSent,
     handleMarkAsRead,
@@ -41,10 +41,7 @@ function DashboardPage() {
       const currentUserId = localStorage.getItem("uid");
       if (!currentUserId) throw new Error("User not authenticated");
 
-      const socketInstance = socket?.getSocket();
-      if (!socketInstance) throw new Error("Socket not initialized");
-
-      const newGroup = await createGroupChatSocket(socketInstance, {
+      const newGroup = await createGroupChat({
         name: groupData.name,
         users: groupData.users,
         currentUserId,
@@ -52,7 +49,7 @@ function DashboardPage() {
 
       const newChat: Chat = {
         id: newGroup._id,
-        name: newGroup.chatName || groupData.name,
+        name: newGroup.chatName || newGroup.name || groupData.name,
         lastMessage: "",
       };
 
@@ -69,7 +66,32 @@ function DashboardPage() {
       alert("Failed to create group");
     }
   };
+  const handleUserClick = async (user: User) => {
+    try {
+      const currentUserId = localStorage.getItem("uid");
+      if (!currentUserId || !user._id) throw new Error("Missing user data");
 
+      const chat = await createOneOnOneChat({
+        currentUserId,
+        userId: user._id,
+      });
+
+      const formattedChat: Chat = {
+        id: chat._id,
+        name: user.name,
+        lastMessage: chat.lastMessage?.text || "",
+      };
+
+      setChats((prev) => {
+        const exists = prev.some(c => c.id === formattedChat.id);
+        return exists ? prev : [formattedChat, ...prev];
+      });
+
+      setSelectedChat(chat._id);
+    } catch (err) {
+      console.error("Failed to create or fetch chat:", err);
+    }
+  };
   const onChatSelect = useCallback((chatId: string | null) => {
     const prevChatId = selectedChat;
     setSelectedChat(chatId);
@@ -127,16 +149,7 @@ function DashboardPage() {
 
         {socket?.getSocket() && (
           <UserSearch
-            socket={socket.getSocket()!}
-            onChatCreated={(chat: Chat) => {
-              setChats((prev) => {
-                const exists = prev.some((c) => c.id === chat.id);
-                if (!exists) return [chat, ...prev];
-                return prev;
-              });
-              setSelectedChat(chat.id);
-              refreshChats();
-            }}
+            onUserClick={handleUserClick}
           />
         )}
 
@@ -144,7 +157,7 @@ function DashboardPage() {
           {socket?.getSocket() ? (
             chats.length > 0 ? (
               <ChatList
-              socket={socket.getSocket()}
+                socket={socket.getSocket()}
                 chats={chats}
                 onSelect={onChatSelect}
                 selectedChat={selectedChat}

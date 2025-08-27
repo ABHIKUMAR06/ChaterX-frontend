@@ -212,6 +212,31 @@ class SocketService {
             }
         );
     }
+    createOneOnOneChat(data: { currentUserId: string; userId: string }): Promise<any> {
+        return new Promise((resolve, reject) => {
+            if (!this.socket || !this.isInitialized) {
+                return reject(new Error("Socket not initialized"));
+            }
+
+            this.socket.emit(
+                "createGroup",
+                {
+                    users: [data.currentUserId, data.userId],
+                    isGroup: false,
+                    admin: null,
+                    name: null,
+                },
+                (response: any) => {
+                    if (response.success) {
+                        resolve(response.One_On_One || response.group);
+                    } else {
+                        reject(new Error(response.error || "Failed to create or fetch one-on-one chat"));
+                    }
+                }
+            );
+        });
+    }
+
     sendMessage(chatId: string, message: string, replyTo?: { _id: string; content: string }): void {
         if (!this.socket || !this.isInitialized) return;
 
@@ -248,37 +273,36 @@ class SocketService {
         if (!this.socket || !this.isInitialized) return;
         this.socket.emit("leaveChat", chatId);
     }
-markMessagesAsDelivered(chatId: string): void {
-    if (!this.socket || !this.isInitialized) return;
+    markMessagesAsDelivered(chatId: string): void {
+        if (!this.socket || !this.isInitialized) return;
 
-    if (this.socket.connected) {
-        this.socket.emit("fetchSentMessages", { chatId }, (messages: any[]) => {
-            const currentUserId = localStorage.getItem("uid");
-            messages.forEach((msg) => {
-                if (msg.senderId !== currentUserId) {
-                    this.socket?.emit("messageStatusUpdate", {
-                        messageId: msg._id,
-                        chatId,
-                        statusName: "delivered",
-                    });
-                }
+        if (this.socket.connected) {
+            this.socket.emit("fetchSentMessages", { chatId }, (messages: any[]) => {
+                const currentUserId = localStorage.getItem("uid");
+                messages.forEach((msg) => {
+                    if (msg.senderId !== currentUserId) {
+                        this.socket?.emit("messageStatusUpdate", {
+                            messageId: msg._id,
+                            chatId,
+                            statusName: "delivered",
+                        });
+                    }
+                });
+            });
+        }
+    }
+
+    markMessagesAsRead(chatId: string, messages: any[]): void {
+        if (!this.socket || !this.isInitialized) return;
+        const socket = this.socket
+        messages.forEach((message) => {
+            socket.emit("messageStatusUpdate", {
+                messageId: message._id,
+                chatId,
+                statusName: "read",
             });
         });
     }
-}
-
-markMessagesAsRead(chatId: string, messages: any[]): void {
-    if (!this.socket || !this.isInitialized) return;
- const socket = this.socket
-    messages.forEach((message) => {
-        socket.emit("messageStatusUpdate", {
-            messageId: message._id,
-            chatId,
-            statusName: "read",
-        });
-    });
-}
-
 
 
 
@@ -289,15 +313,27 @@ markMessagesAsRead(chatId: string, messages: any[]): void {
                 return;
             }
 
-            this.socket.emit("createGroupChat", groupData, (response: any) => {
-                if (response.success) {
-                    resolve(response.chat);
-                } else {
-                    reject(new Error(response.message || "Failed to create group chat"));
+            const uniqueUsers = Array.from(new Set([...groupData.users, groupData.currentUserId]));
+
+            this.socket.emit(
+                "createGroup",
+                {
+                    name: groupData.name,
+                    users: uniqueUsers,
+                    admin: groupData.currentUserId,
+                    isGroup: true,
+                },
+                (response: any) => {
+                    if (response.success) {
+                        resolve(response.group);
+                    } else {
+                        reject(new Error(response.error || "Failed to create group"));
+                    }
                 }
-            });
+            );
         });
     }
+
 
     getSocket(): Socket<DefaultEventsMap, DefaultEventsMap> | null {
         return this.socket;

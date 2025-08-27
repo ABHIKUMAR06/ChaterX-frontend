@@ -21,6 +21,9 @@ interface UseSocketReturn {
   joinChat: (chatId: string) => void;
   leaveChat: (chatId: string) => void;
   markMessagesAsRead: (chatId: string, messages: any[]) => void;
+  createOneOnOneChat: (data: { currentUserId: string; userId: string }) => Promise<any>;
+  createGroupChat: (data: { name: string; users: string[]; currentUserId: string }) => Promise<any>;
+
 }
 
 export const useSocket = (selectedChat: string | null): UseSocketReturn => {
@@ -29,10 +32,8 @@ export const useSocket = (selectedChat: string | null): UseSocketReturn => {
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
-  // Use ref to track the latest selectedChat value
   const selectedChatRef = useRef<string | null>(selectedChat);
 
-  // Keep the ref updated
   useEffect(() => {
     selectedChatRef.current = selectedChat;
   }, [selectedChat]);
@@ -125,7 +126,7 @@ export const useSocket = (selectedChat: string | null): UseSocketReturn => {
           id: chatId,
           name: chatName,
           lastMessage: message.content || "",
-          
+
         };
 
         return [newChat, ...prevChats];
@@ -141,7 +142,7 @@ export const useSocket = (selectedChat: string | null): UseSocketReturn => {
 
       return [updatedChat, ...updatedChats];
     });
-  }, []); 
+  }, []);
 
   const handleNewNotification = useCallback((notification: any) => {
     const formattedNotification: Notification = {
@@ -187,6 +188,13 @@ export const useSocket = (selectedChat: string | null): UseSocketReturn => {
   const handleChatsLoaded = useCallback((loadedChats: Chat[]) => {
     console.log("Chats loaded in hook:", loadedChats);
     setChats(loadedChats);
+  }, []);
+  const createOneOnOneChat = useCallback((data: { currentUserId: string; userId: string }) => {
+    return socketService.createOneOnOneChat(data);
+  }, []);
+
+  const createGroupChat = useCallback((data: { name: string; users: string[]; currentUserId: string }) => {
+    return socketService.createGroupChat(data);
   }, []);
 
   const callbacks: SocketCallbacks = {
@@ -254,7 +262,6 @@ export const useSocket = (selectedChat: string | null): UseSocketReturn => {
         return prevChats;
       }
 
-      // Move the updated chat to the top
       const updatedChats = [...prevChats];
       const [chatToUpdate] = updatedChats.splice(chatIndex, 1);
 
@@ -316,6 +323,8 @@ export const useSocket = (selectedChat: string | null): UseSocketReturn => {
   return {
     socket: socketService,
     chats,
+    createOneOnOneChat,
+    createGroupChat,
     notifications,
     error,
     isConnected,

@@ -1,10 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createOneOnOneChatSocket } from "@/lib/chatApi"; 
 import { searchUser } from "@/lib/userApi";
-import { Chat, User, UserSearchProps } from "@/type/type";
-export default function UserSearch({ onChatCreated ,socket }: UserSearchProps) {
+import { User, UserSearchProps } from "@/type/type";
+
+interface ModifiedUserSearchProps extends Omit<UserSearchProps, "socket" | "onChatCreated"> {
+  onUserClick: (user: User) => void;
+}
+
+export default function UserSearch({ onUserClick }: ModifiedUserSearchProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
@@ -26,44 +30,6 @@ export default function UserSearch({ onChatCreated ,socket }: UserSearchProps) {
 
     return () => clearTimeout(delayDebounce);
   }, [query]);
-
-const handleUserClick = async (user: User) => {
-  const token = localStorage.getItem("token");
-  if (!token) {
-    console.error("User not logged in");
-    return;
-  }
-
-  let currentUserId;
-  try {
-    currentUserId = JSON.parse(atob(token.split(".")[1])).userId;
-  } catch (error) {
-    console.error("Invalid token format:", error);
-    return;
-  }
-
-  if (!currentUserId || !user._id) return;
-
-  try {
-    const chatData = await createOneOnOneChatSocket(socket, {
-      currentUserId,
-      userId: user._id,
-    });
-
-    const formattedChat: Chat = {
-      id: chatData._id,
-      name: user.name,
-      lastMessage: chatData.lastMessage?.text || "",
-    };
-
-    onChatCreated(formattedChat);
-    setQuery("");
-    setResults([]);
-  } catch (err) {
-    console.error("Chat creation failed:", err);
-  }
-};
-
 
   return (
     <div className="relative w-full max-w-md mx-auto my-2">
@@ -87,7 +53,11 @@ const handleUserClick = async (user: User) => {
             <li
               key={user._id}
               className="px-4 py-3 hover:bg-orange-50 cursor-pointer transition flex flex-col"
-              onClick={() => handleUserClick(user)}
+              onClick={() => {
+                onUserClick(user);
+                setQuery(""); 
+                setResults([]);
+              }}
             >
               <p className="font-semibold text-gray-900 truncate">{user.name}</p>
               <p className="text-sm text-gray-500 truncate">{user.email}</p>
